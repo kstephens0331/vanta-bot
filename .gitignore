@@ -1,0 +1,28 @@
+﻿# deps
+node_modules/
+**/node_modules/
+
+# env
+.env
+.env.*
+**/.env
+**/.env.*
+
+# builds & caches
+dist/
+**/dist/
+.vite*/
+**/.vite*/
+*.tsbuildinfo
+
+# logs
+*.log
+pnpm-debug.log*
+npm-debug.log*
+
+# tooling
+.vercel
+.vercel_build_output
+
+# misc
+*.bak
