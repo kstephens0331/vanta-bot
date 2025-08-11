@@ -20,7 +20,7 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       <Link to="/">Dashboard</Link>
       <Link to="/leads">Leads</Link>
       <Link to="/bots">Bots</Link>
-      <Link to "/revenue">Revenue</Link>
+      <Link to="/revenue">Revenue</Link>
       <Link to="/projects">Projects</Link>
     </nav>
     {children}
@@ -34,7 +34,7 @@ const Card: React.FC<{ title: string; children: React.ReactNode }> = ({ title, c
   </section>
 );
 
-/** DASHBOARD — shows Phase‑0 flags from `settings` */
+/** DASHBOARD — shows Phase-0 flags from `settings` */
 const Dashboard: React.FC = () => {
   const [data, setData] = useState<SettingsResp | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -101,7 +101,7 @@ const Revenue: React.FC = () => {
 
   return (
     <Shell>
-      <Card title="Active Add‑ons">
+      <Card title="Active Add-ons">
         {err && <div style={{ color: "tomato" }}>{err}</div>}
         {!data && !err && <div>Loading…</div>}
         {data && (
