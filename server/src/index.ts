@@ -1,21 +1,38 @@
-﻿import express from "express";
-import cors from "cors";
-import "dotenv/config";
+﻿// server/src/index.ts
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import { supabase } from './supabase.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/health", (_,res)=>res.json({ok:true, env:process.env.APP_ENV||"dev"}));
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, env: process.env.APP_ENV ?? 'dev' });
+});
 
-const settings = {
-  outreach: { daily_limit: 100 },
-  discovery: { max_ready_cities_ahead: 3 },
-  email: { auto_send_after_QA: true },
-  deploy: { require_human_approval: true },
-  stripe: { test: true }
-};
-app.get("/api/settings", (_,res)=>res.json(settings));
+app.get('/settings', async (_req, res) => {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('key,value,updated_at')
+    .order('key', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
 
-const port = process.env.PORT || 4000;
-app.listen(port, ()=> console.log(`Vanta server on :${port}`));
+  const shaped: Record<string, unknown> = {};
+  for (const row of data ?? []) shaped[row.key] = row.value;
+  res.json({ settings: shaped, raw: data });
+});
+
+app.get('/addons', async (_req, res) => {
+  const { data, error } = await supabase
+    .from('pricing_addons')
+    .select('code,description,hours_estimate,price,active')
+    .eq('active', true)
+    .order('code', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ addons: data });
+});
+
+const port = Number(process.env.PORT ?? 3000);
+app.listen(port, () => console.log(`Vanta server listening on :${port}`));
