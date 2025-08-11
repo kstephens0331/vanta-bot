@@ -1,23 +1,19 @@
 # syntax=docker/dockerfile:1
 
-# ---- deps ----
-FROM node:20-alpine AS deps
+FROM node:20-alpine as base
 WORKDIR /app
-COPY server/package*.json ./
-RUN npm ci
 
-# ---- build ----
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Install deps for the server package
+# Use npm ci if lockfile exists, otherwise fall back to npm install
+COPY server/package.json ./package.json
+COPY server/package-lock.json ./package-lock.json
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# Copy source and build
 COPY server/ ./
 RUN npm run build
 
-# ---- runtime ----
-FROM node:20-alpine AS runtime
-WORKDIR /app
 ENV NODE_ENV=production
-# bring in built app + package.json + node_modules
-COPY --from=build /app ./
+ENV PORT=3000
 EXPOSE 3000
 CMD ["npm","start"]

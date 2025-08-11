@@ -4,5 +4,3 @@ web
 edge
 db
 *.log
-Dockerfile
-.dockerignore
