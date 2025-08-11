@@ -1,0 +1,8 @@
+.git
+node_modules
+web
+edge
+db
+*.log
+Dockerfile
+.dockerignore
