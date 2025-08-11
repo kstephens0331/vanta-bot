@@ -1,5 +1,4 @@
-﻿// server/src/index.ts
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabase.js';
@@ -9,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, env: process.env.APP_ENV ?? 'dev' });
+  res.json({ ok: true, env: process.env.APP_ENV ?? 'dev', now: new Date().toISOString() });
 });
 
 app.get('/settings', async (_req, res) => {
@@ -18,9 +17,8 @@ app.get('/settings', async (_req, res) => {
     .select('key,value,updated_at')
     .order('key', { ascending: true });
   if (error) return res.status(500).json({ error: error.message });
-
   const shaped: Record<string, unknown> = {};
-  for (const row of data ?? []) shaped[row.key] = row.value;
+  for (const row of data ?? []) (shaped as any)[row.key] = row.value;
   res.json({ settings: shaped, raw: data });
 });
 
