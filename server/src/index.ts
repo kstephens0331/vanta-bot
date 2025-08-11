@@ -30,8 +30,8 @@ async function loadMergedSettings() {
 
   const fromDb: Record<string, unknown> = {};
   for (const row of data ?? []) {
-    (fromDb as any)[row.key] =
-      typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+    // ❌ was: JSON.parse on strings
+    (fromDb as any)[row.key] = row.value; // ✅ use as-is
   }
   return { ...DEFAULTS, ...fromDb };
 }
