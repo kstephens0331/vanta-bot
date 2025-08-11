@@ -2,10 +2,12 @@
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabase.js';
+import settingsRouter from "./routes/settings";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(settingsRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, env: process.env.APP_ENV ?? 'dev', now: new Date().toISOString() });
