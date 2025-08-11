@@ -5,10 +5,10 @@ import cors from 'cors';
 import { supabase } from './supabase.js';
 
 const app = express();
-app.use(cors());
+app.use(cors());            // allow Vercel/localhost
 app.use(express.json());
 
-// ---------- Defaults ----------
+// ---------- Defaults used for Phase 0 ----------
 const DEFAULTS = {
   outreach_daily_limit: 100,
   max_cities_ahead: 2,
@@ -19,139 +19,71 @@ const DEFAULTS = {
   stripe_mode: 'live' as 'live' | 'test',
 };
 
-// Helper to read + merge settings
-async function loadMergedSettings() {
+// Robustly parse only-if-JSON; otherwise return as-is
+function parseMaybeJson(v: unknown) {
+  if (v == null || typeof v !== 'string') return v;
+  const t = v.trim();
+  if (!t) return t;
+  const first = t[0];
+  const looksJson = `[{\"tfn0123456789-`.includes(first);
+  if (!looksJson) return v;
+  try { return JSON.parse(t); } catch { return v; }
+}
+
+// ---------- Health ----------
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, env: process.env.APP_ENV ?? 'dev', now: new Date().toISOString() });
+});
+
+// ---------- Settings ----------
+app.get('/settings', async (_req, res) => {
   const { data, error } = await supabase
     .from('settings')
     .select('key,value')
     .order('key', { ascending: true });
 
-  if (error) throw new Error(error.message);
+  // If table is missing, just return defaults so UI renders
+  if (error?.message?.toLowerCase().includes("could not find the table")) {
+    return res.json({ ...DEFAULTS });
+  }
+  if (error) return res.status(500).json({ error: error.message });
 
   const fromDb: Record<string, unknown> = {};
   for (const row of data ?? []) {
-    // ❌ was: JSON.parse on strings
-    (fromDb as any)[row.key] = row.value; // ✅ use as-is
+    (fromDb as any)[row.key] = parseMaybeJson(row.value);
   }
-  return { ...DEFAULTS, ...fromDb };
-}
-
-// ---------- Health ----------
-app.get('/health', (_req, res) => {
-  res.json({
-    ok: true,
-    env: process.env.APP_ENV ?? 'dev',
-    now: new Date().toISOString(),
-  });
+  return res.json({ ...DEFAULTS, ...fromDb });
 });
 
-// ---------- Settings (GET) ----------
 app.put('/settings', async (req, res) => {
-  try {
-    // only allow known keys
-    const allowed = new Set([
-      'outreach_daily_limit',
-      'max_cities_ahead',
-      'followup_cadence_days',
-      'auto_send_after_qa',
-      'require_human_approval',
-      'escalation_email_only',
-      'stripe_mode',
-    ]);
+  const incoming = (req.body ?? {}) as Partial<typeof DEFAULTS>;
 
-    const body = req.body ?? {};
-    const rows = Object.entries(body)
-      .filter(([k]) => allowed.has(k))
-      .map(([key, value]) => ({ key, value })); // value is JSONB in DB
+  // Coerce types lightly (keeps UI logic stable)
+  const normalized = {
+    outreach_daily_limit: Number(incoming.outreach_daily_limit ?? DEFAULTS.outreach_daily_limit),
+    max_cities_ahead: Number(incoming.max_cities_ahead ?? DEFAULTS.max_cities_ahead),
+    followup_cadence_days: Number(incoming.followup_cadence_days ?? DEFAULTS.followup_cadence_days),
+    auto_send_after_qa: Boolean(incoming.auto_send_after_qa ?? DEFAULTS.auto_send_after_qa),
+    require_human_approval: Boolean(incoming.require_human_approval ?? DEFAULTS.require_human_approval),
+    escalation_email_only: Boolean(incoming.escalation_email_only ?? DEFAULTS.escalation_email_only),
+    stripe_mode: (incoming.stripe_mode === 'test' ? 'test' : 'live') as 'live' | 'test',
+  };
 
-    if (!rows.length) return res.status(400).json({ error: 'No valid keys' });
+  // Upsert each key; works whether value column is text or jsonb
+  const rows = Object.entries(normalized).map(([key, value]) => ({ key, value }));
+  const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'key' });
 
-    const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'key' });
-    if (error) return res.status(500).json({ error: error.message });
-
-    // return the merged view (defaults + DB) like GET does
-    const { data, error: e2 } = await supabase
-      .from('settings')
-      .select('key,value')
-      .order('key', { ascending: true });
-
-    if (e2) return res.status(500).json({ error: e2.message });
-
-    const fromDb: Record<string, unknown> = {};
-    for (const row of data ?? []) {
-      (fromDb as any)[row.key] = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-    }
-    res.json({ ...DEFAULTS, ...fromDb });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'unknown error' });
+  if (error?.message?.toLowerCase().includes("could not find the table")) {
+    // If table doesn't exist yet, just return what UI expects so Phase 0 flows
+    return res.json(normalized);
   }
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Return the merged shape the UI displays
+  res.json({ ...DEFAULTS, ...normalized });
 });
 
-// ---------- Settings (POST) ----------
-type Incoming = Partial<{
-  outreach_daily_limit: number;
-  max_cities_ahead: number;
-  followup_cadence_days: number;
-  auto_send_after_qa: boolean;
-  require_human_approval: boolean;
-  escalation_email_only: boolean;
-  stripe_mode: 'live' | 'test';
-}>;
-
-const ALLOWED_KEYS = new Set<keyof Incoming>([
-  'outreach_daily_limit',
-  'max_cities_ahead',
-  'followup_cadence_days',
-  'auto_send_after_qa',
-  'require_human_approval',
-  'escalation_email_only',
-  'stripe_mode',
-]);
-
-app.post('/settings', async (req, res) => {
-  try {
-    const body: Incoming = req.body ?? {};
-    const rows: Array<{ key: string; value: any }> = [];
-
-    for (const [k, v] of Object.entries(body)) {
-      if (!ALLOWED_KEYS.has(k as keyof Incoming)) continue;
-
-      // light validation
-      if (
-        ['outreach_daily_limit', 'max_cities_ahead', 'followup_cadence_days'].includes(k) &&
-        typeof v !== 'number'
-      ) return res.status(400).json({ error: `${k} must be a number` });
-
-      if (
-        ['auto_send_after_qa', 'require_human_approval', 'escalation_email_only'].includes(k) &&
-        typeof v !== 'boolean'
-      ) return res.status(400).json({ error: `${k} must be a boolean` });
-
-      if (k === 'stripe_mode' && v !== 'live' && v !== 'test') {
-        return res.status(400).json({ error: `stripe_mode must be 'live' or 'test'` });
-      }
-
-      rows.push({ key: k, value: v });
-    }
-
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'No valid keys provided' });
-    }
-
-    const { error } = await supabase
-      .from('settings')
-      .upsert(rows, { onConflict: 'key' });
-
-    if (error) throw new Error(error.message);
-
-    const merged = await loadMergedSettings();
-    res.json(merged);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message ?? 'Failed to save settings' });
-  }
-});
-
-// ---------- Add-ons ----------
+// ---------- Add-ons (safe fallback if table not present) ----------
 app.get('/addons', async (_req, res) => {
   const { data, error } = await supabase
     .from('pricing_addons')
@@ -159,9 +91,13 @@ app.get('/addons', async (_req, res) => {
     .eq('active', true)
     .order('code', { ascending: true });
 
+  if (error?.message?.toLowerCase().includes("could not find the table")) {
+    return res.json({ addons: [] });
+  }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ addons: data });
 });
 
+// ---------- Start ----------
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => console.log(`Vanta server listening on :${port}`));
