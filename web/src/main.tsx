@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Link } from "react-router-dom";
-import { request } from "./lib/api";
+import { request, API_BASE } from "./lib/api";
 import "./index.css";
 
 type Settings = {
@@ -22,9 +22,6 @@ type Addon = {
   price: number;
   active: boolean;
 };
-
-const API_BASE = (import.meta as any).env?.VITE_API_URL ??
-  (typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "http://localhost:8080");
 
 function Shell(props: { children: React.ReactNode }) {
   return (
@@ -86,14 +83,14 @@ function Dashboard() {
     })();
   }, []);
 
-  // load addons
+  // load addons (non-blocking)
   useEffect(() => {
     (async () => {
       try {
         const { addons } = await request<{ addons: Addon[] }>("/addons");
         setAddons(addons);
       } catch {
-        // non-blocking
+        /* ignore */
       }
     })();
   }, []);
@@ -108,11 +105,10 @@ function Dashboard() {
     setSaving(true);
     setErr(null);
     try {
-      // send full payload (server validates & upserts)
       const merged = await request<Settings>("/settings", {
-        method: "POST",
-        data: settings,
-      } as any);
+        method: "PUT",           // <- keep in sync with server route
+        data: settings,          // axios will JSON-encode
+      });
       setSettings(merged);
       setInitial(merged);
       setSavedAt(new Date().toLocaleTimeString());

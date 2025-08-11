@@ -46,12 +46,44 @@ app.get('/health', (_req, res) => {
 });
 
 // ---------- Settings (GET) ----------
-app.get('/settings', async (_req, res) => {
+app.put('/settings', async (req, res) => {
   try {
-    const merged = await loadMergedSettings();
-    res.json(merged);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message ?? 'Failed to load settings' });
+    // only allow known keys
+    const allowed = new Set([
+      'outreach_daily_limit',
+      'max_cities_ahead',
+      'followup_cadence_days',
+      'auto_send_after_qa',
+      'require_human_approval',
+      'escalation_email_only',
+      'stripe_mode',
+    ]);
+
+    const body = req.body ?? {};
+    const rows = Object.entries(body)
+      .filter(([k]) => allowed.has(k))
+      .map(([key, value]) => ({ key, value })); // value is JSONB in DB
+
+    if (!rows.length) return res.status(400).json({ error: 'No valid keys' });
+
+    const { error } = await supabase.from('settings').upsert(rows, { onConflict: 'key' });
+    if (error) return res.status(500).json({ error: error.message });
+
+    // return the merged view (defaults + DB) like GET does
+    const { data, error: e2 } = await supabase
+      .from('settings')
+      .select('key,value')
+      .order('key', { ascending: true });
+
+    if (e2) return res.status(500).json({ error: e2.message });
+
+    const fromDb: Record<string, unknown> = {};
+    for (const row of data ?? []) {
+      (fromDb as any)[row.key] = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+    }
+    res.json({ ...DEFAULTS, ...fromDb });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'unknown error' });
   }
 });
 
