@@ -1,19 +1,39 @@
-﻿// server/src/index.ts
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabase.js';
 
 const app = express();
-app.use(cors());
+
+/** ---- CORS (allow your Vercel site + localhost) ---- */
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://vanta-bot-git-master-kstephens0331s-projects.vercel.app',
+];
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin) return cb(null, true); // curl/Postman
+      if (ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin)) {
+        return cb(null, true);
+      }
+      return cb(new Error(`CORS: origin not allowed: ${origin}`));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+// Preflight for all routes
+app.options('*', cors());
+
 app.use(express.json());
 
-// --- Health ----------------------------------------------------
+/** ---- Health ---- */
 app.get('/health', (_req, res) => {
   res.json({ ok: true, env: process.env.APP_ENV ?? 'dev', now: new Date().toISOString() });
 });
 
-// --- Settings (defaults + DB overrides) -----------------------
+/** ---- Settings (defaults + DB overrides) ---- */
 const DEFAULTS = {
   outreach_daily_limit: 100,
   max_cities_ahead: 2,
@@ -34,14 +54,17 @@ app.get('/settings', async (_req, res) => {
 
   const fromDb: Record<string, unknown> = {};
   for (const row of data ?? []) {
-    (fromDb as any)[row.key] = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+    let v = row.value as unknown;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch { /* keep raw string */ }
+    }
+    (fromDb as any)[row.key] = v;
   }
 
-  // return top-level keys so the UI can read them directly
-  return res.json({ ...DEFAULTS, ...fromDb });
+  res.json({ ...DEFAULTS, ...fromDb });
 });
 
-// --- Add-ons ---------------------------------------------------
+/** ---- Add-ons ---- */
 app.get('/addons', async (_req, res) => {
   const { data, error } = await supabase
     .from('pricing_addons')
