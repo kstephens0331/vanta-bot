@@ -1,12 +1,11 @@
 ﻿{
-  "name": "vanta",
   "private": true,
-  "packageManager": "pnpm@10.14.0",
-  "workspaces": ["web","server","edge","db"],
+  "workspaces": ["web", "server"],
   "scripts": {
-    "dev:web": "pnpm -C web dev",
-    "dev:server": "pnpm -C server dev",
-    "db:push": "pnpm -C db run push",
-    "db:seed": "pnpm -C db run seed"
+    "build": "pnpm -C web run build && pnpm -C server run build",
+    "build:web": "pnpm -C web run build",
+    "build:server": "pnpm -C server run build",
+    "dev:web": "pnpm -C web run dev",
+    "dev:server": "pnpm -C server run dev"
   }
 }
