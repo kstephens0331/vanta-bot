@@ -1,5 +1,3 @@
 packages:
-  - "server"
   - "web"
-  - "edge"
-  - "db"
+  - "server"
