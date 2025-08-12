@@ -1,11 +1,10 @@
 ﻿{
+  "name": "vanta",
   "private": true,
-  "workspaces": ["web", "server"],
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "build": "pnpm -C web run build && pnpm -C server run build",
-    "build:web": "pnpm -C web run build",
-    "build:server": "pnpm -C server run build",
-    "dev:web": "pnpm -C web run dev",
-    "dev:server": "pnpm -C server run dev"
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev",
+    "start": "pnpm -C server start"
   }
 }
