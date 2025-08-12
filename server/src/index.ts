@@ -57,6 +57,64 @@ app.get('/settings', async (_req, res) => {
   return res.json({ ...DEFAULTS, ...fromDb });
 });
 
+app.post('/settings', async (req, res) => {
+  try {
+    // OPTIONAL: lock down writes via bearer token
+    const requiredToken = process.env.ADMIN_TOKEN;
+    if (requiredToken) {
+      const auth = req.headers.authorization ?? '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (token !== requiredToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+
+    // whitelist to avoid random keys
+    const allowed: (keyof typeof DEFAULTS)[] = [
+      'outreach_daily_limit',
+      'max_cities_ahead',
+      'followup_cadence_days',
+      'auto_send_after_qa',
+      'require_human_approval',
+      'escalation_email_only',
+      'stripe_mode',
+    ];
+
+    const incoming = req.body ?? {};
+    const updates: Record<string, unknown> = {};
+    for (const k of allowed) {
+      if (k in incoming) updates[k] = incoming[k];
+    }
+
+    // upsert each key
+    for (const [key, value] of Object.entries(updates)) {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value }, { onConflict: 'key' });
+      if (error) return res.status(500).json({ error: error.message });
+    }
+
+    // re-read + merge with defaults (shape identical to GET /settings)
+    const { data, error } = await supabase
+      .from('settings')
+      .select('key,value')
+      .order('key', { ascending: true });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const fromDb: Record<string, unknown> = {};
+    for (const row of data ?? []) {
+      (fromDb as any)[row.key] =
+        typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+    }
+
+    const merged = { ...DEFAULTS, ...fromDb };
+    return res.json(merged);
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? 'Unexpected error' });
+  }
+});
+
 app.put('/settings', async (req, res) => {
   const incoming = (req.body ?? {}) as Partial<typeof DEFAULTS>;
 
