@@ -3,10 +3,12 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { supabase } from './supabase.js';
+import { maybeRequireAdmin } from './auth.js';
 
 const app = express();
 app.use(cors());            // allow Vercel/localhost
 app.use(express.json());
+app.use(maybeRequireAdmin);
 
 // ---------- Defaults used for Phase 0 ----------
 const DEFAULTS = {
